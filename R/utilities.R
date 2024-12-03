@@ -375,7 +375,8 @@ lookup.enm <- function(algorithm) {
               maxnet = enm.maxnet,
               # randomForest = enm.randomForest,
               # boostedRegressionTrees = enm.boostedRegressionTrees,
-              bioclim = enm.bioclim
+              bioclim = enm.bioclim,
+              CVmaxnet = enm.CVmaxnet
   )
   return(x)
 }
