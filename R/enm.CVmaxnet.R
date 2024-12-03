@@ -39,6 +39,8 @@ CVmaxnet.args <- function(occs.z, bg.z, tune.tbl.i, other.settings) {
   # some models fail to converge if this parameter is not set to TRUE
   # usually the case with sparse datasets
   out$addsamplestobackground <- TRUE
+  out$verbose <- FALSE
+  out$predictions <- FALSE
   out <- c(out, other.settings$other.args)
   return(out)
 }
