@@ -2,6 +2,90 @@
 # maxnet ENMdetails object ####
 ################################# #
 
+# This function predicts with a cross-validated Maxent model
+predict.CVmaxnet <- function(
+    object, newdata, clamp = TRUE,
+    type = c("link", "exponential", "cloglog", "logistic"),
+    offset = NULL, ...) {
+  # |GEPB|: First lines in predict.maxnet()
+  # na_action <- options("na.action")[[1]]
+  # on.exit(options(na.action = na_action))
+  # options(na.action = "na.pass")
+  
+  newdata <- data.frame(newdata) # sparse matrices cause issues
+  if (clamp) {
+    for (v in intersect(names(object$varmax), names(newdata))) {
+      newdata[, v] <- pmin(pmax(newdata[, v], object$varmin[v]),
+                           object$varmax[v])
+    }
+  }
+  
+  # maxnet has a bug where some hinges are duplicated, so combining them
+  #  cleaning up the formatting of these types for use with formula
+  b.names <- names(object$betas)
+  to.combine <- b.names[which(duplicated(b.names))]
+  # CHECK GEPB betas
+  if (length(to.combine) > 0) {
+    for (tc in to.combine) {
+      tmp <- which(b.names %in% tc)
+      object$betas[tmp] <- sum(object$betas[tmp])
+      object$betas <- object$betas[-tmp[-1]]
+      b.names <- names(object$betas)
+    }
+  }
+  if (!length(unique(names(object$betas))) == length((names(object$betas)))) {
+    print('some duplicated feature names still')
+  }
+  
+  terms <- sub("hinge\\((.*)\\):(.*):(.*)$", "hingeval(\\1,\\2,\\3)",
+               names(object$betas))
+  terms <- sub("categorical\\((.*)\\):(.*)$", "categoricalval(\\1,\\2)",
+               terms)
+  terms <- sub("thresholds\\((.*)\\):(.*)$", "thresholdval(\\1,\\2)",
+               terms)
+  # changed f to form because f is a command when using browser()
+  form <- formula(paste("~", paste(terms, collapse = " + "), "-1"))
+  
+  mm <- model.matrix(form, data.frame(newdata))
+  if (clamp) {
+    mm <- t(pmin(pmax(t(mm), object$featuremins[names(object$betas)]),
+                 object$featuremaxs[names(object$betas)]))
+  }
+  # CM added offset; CM already logs this on input, so this isn't general
+  # CM ditched alpha because it required a wasted projection step in maxnet, and
+  # its just a normalizing constant that you can take care of later, i think.
+  # maybe its an issue for the rescaled ones, but don't care...
+  t1 <- proc.time()
+  link <- (mm %*% object$betas) + ifelse(!is.null(offset), offset, 0) + object$alpha
+  t2 <-  proc.time() - t1
+  type <- match.arg(type)
+  if (type == "link") {
+    return(link)
+  }
+  if (type == "exponential") {
+    out <- exp(link)
+    return(out)
+  }
+  if (type == "cloglog") {
+    return(1 - exp(0 - exp(object$entropy + link)))
+  }
+  if (type == "logistic") {
+    return(1 / (1 + exp(-object$entropy - link)))
+  }
+}
+
+categoricalval <- function(x, category) {
+  ifelse(x == category, 1, 0)
+}
+
+thresholdval <- function(x, knot) {
+  ifelse(x >= knot, 1, 0)
+}
+
+hingeval <- function(x, min, max) {
+  pmin(1, pmax(0, (x - min) / (max - min)))
+}
+
 # This function fits a cross-validated Maxent model
 CVmaxnet <- function(p, data, f = maxnet::maxnet.formula(p, data), regmult = 1,
                      regfun = maxnet::maxnet.default.regularization,
@@ -40,7 +124,7 @@ CVmaxnet <- function(p, data, f = maxnet::maxnet.formula(p, data), regmult = 1,
   if (verbose) print('Starting cross-validated model.')
   
   # Fit CV glmnet model
-  model.cv <- cv.glmnet(x = mm, y = p, family = "binomial",
+  model.cv <- glmnet::cv.glmnet(x = mm, y = p, family = "binomial",
                         standardize = standardize, penalty.factor = reg,
                         nlambda = 200, lambda = lambda,
                         weights = weights, offset = offset, maxit = maxit,
@@ -131,90 +215,6 @@ CVmaxnet <- function(p, data, f = maxnet::maxnet.formula(p, data), regmult = 1,
   model.cv$samplemeans <- c(means, majorities)
   model.cv$levels <- lapply(data, levels)
   return(model.cv)
-}
-
-# This function predicts with a cross-validated Maxent model
-predict.CVmaxnet <- function(
-    object, newdata, clamp = TRUE,
-    type = c("link", "exponential", "cloglog", "logistic"),
-    offset = NULL, ...) {
-  # |GEPB|: First lines in predict.maxnet()
-  # na_action <- options("na.action")[[1]]
-  # on.exit(options(na.action = na_action))
-  # options(na.action = "na.pass")
-  
-  newdata <- data.frame(newdata) # sparse matrices cause issues
-  if (clamp) {
-    for (v in intersect(names(object$varmax), names(newdata))) {
-      newdata[, v] <- pmin(pmax(newdata[, v], object$varmin[v]),
-                           object$varmax[v])
-    }
-  }
-  
-  # maxnet has a bug where some hinges are duplicated, so combining them
-  #  cleaning up the formatting of these types for use with formula
-  b.names <- names(object$betas)
-  to.combine <- b.names[which(duplicated(b.names))]
-  # CHECK GEPB betas
-  if (length(to.combine) > 0) {
-    for (tc in to.combine) {
-      tmp <- which(b.names %in% tc)
-      object$betas[tmp] <- sum(object$betas[tmp])
-      object$betas <- object$betas[-tmp[-1]]
-      b.names <- names(object$betas)
-    }
-  }
-  if (!length(unique(names(object$betas))) == length((names(object$betas)))) {
-    print('some duplicated feature names still')
-  }
-  
-  terms <- sub("hinge\\((.*)\\):(.*):(.*)$", "hingeval(\\1,\\2,\\3)",
-               names(object$betas))
-  terms <- sub("categorical\\((.*)\\):(.*)$", "categoricalval(\\1,\\2)",
-               terms)
-  terms <- sub("thresholds\\((.*)\\):(.*)$", "thresholdval(\\1,\\2)",
-               terms)
-  # changed f to form because f is a command when using browser()
-  form <- formula(paste("~", paste(terms, collapse = " + "), "-1"))
-  
-  mm <- model.matrix(form, data.frame(newdata))
-  if (clamp) {
-    mm <- t(pmin(pmax(t(mm), object$featuremins[names(object$betas)]),
-                 object$featuremaxs[names(object$betas)]))
-  }
-  # CM added offset; CM already logs this on input, so this isn't general
-  # CM ditched alpha because it required a wasted projection step in maxnet, and
-  # its just a normalizing constant that you can take care of later, i think.
-  # maybe its an issue for the rescaled ones, but don't care...
-  t1 <- proc.time()
-  link <- (mm %*% object$betas) + ifelse(!is.null(offset), offset, 0) + object$alpha
-  t2 <-  proc.time() - t1
-  type <- match.arg(type)
-  if (type == "link") {
-    return(link)
-  }
-  if (type == "exponential") {
-    out <- exp(link)
-    return(out)
-  }
-  if (type == "cloglog") {
-    return(1 - exp(0 - exp(object$entropy + link)))
-  }
-  if (type == "logistic") {
-    return(1 / (1 + exp(-object$entropy - link)))
-  }
-}
-
-categoricalval <- function(x, category) {
-  ifelse(x == category, 1, 0)
-}
-
-thresholdval <- function(x, knot) {
-  ifelse(x >= knot, 1, 0)
-}
-
-hingeval <- function(x, min, max) {
-  pmin(1, pmax(0, (x - min) / (max - min)))
 }
 
 CVmaxnet.name <- "CVmaxnet"
