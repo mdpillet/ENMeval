@@ -4,8 +4,8 @@
 
 CVmaxnet.name <- "CVmaxnet"
 
-CVmaxnet.fun <- CVmaxnet::CVmaxnet
-# CVmaxnet.fun <- CVmaxnet
+# CVmaxnet.fun <- CVmaxnet::CVmaxnet
+CVmaxnet.fun <- CVmaxnet
 
 CVmaxnet.errors <- function(occs, envs, bg, tune.args, partitions, algorithm, 
                           partition.settings, other.settings, 
