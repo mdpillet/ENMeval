@@ -5,6 +5,7 @@
 CVmaxnet.name <- "CVmaxnet"
 
 CVmaxnet.fun <- CVmaxnet::CVmaxnet
+# CVmaxnet.fun <- CVmaxnet
 
 CVmaxnet.errors <- function(occs, envs, bg, tune.args, partitions, algorithm, 
                           partition.settings, other.settings, 
@@ -26,7 +27,8 @@ CVmaxnet.errors <- function(occs, envs, bg, tune.args, partitions, algorithm,
 }
 
 CVmaxnet.msgs <- function(tune.args, other.settings) {
-  msg <- paste0("CVmaxnet from CVmaxnet package v", packageVersion('CVmaxnet'))
+  # msg <- paste0("CVmaxnet from CVmaxnet package v", packageVersion('CVmaxnet'))
+  msg <- "CVmaxnet"
   return(msg)
 }
 
